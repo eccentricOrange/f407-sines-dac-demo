@@ -43,11 +43,11 @@
 #define SIGNAL_FREQUENCY 1e3
 #define SAMPLING_FREQUENCY 100e3
 #define NOISE_FREQUENCY 10e3
-#define SIGNAL_AMPLITUDE 1.0f
+#define SIGNAL_AMPLITUDE 1.5f
 #define PHASE_A 0.0f
 #define PHASE_B M_PI_2
 #define NOISE_AMPLITUDE 0.2f
-#define DAC_OFFSET 1.5
+#define DAC_OFFSET 1.5f
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -73,7 +73,13 @@ static inline float get_noise(float amplitude) {
 }
 
 static inline uint32_t digitize(float signal) {
-	return signal * 4096.0f / 3.3f;
+	uint32_t value = signal * 4096.0f / 3.0f;
+
+	if (value >= 4096) {
+		return 4095;
+	} else {
+		return value;
+	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
