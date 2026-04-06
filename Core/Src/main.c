@@ -53,8 +53,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-volatile float noise;
+#define NUM_SAMPLES (int)(SAMPLING_FREQUENCY / SIGNAL_FREQUENCY) // 100 samples
+
 volatile uint32_t sample_index = 0;
+uint32_t lut_channel_1[NUM_SAMPLES];
+uint32_t lut_channel_2[NUM_SAMPLES];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -84,27 +87,20 @@ static inline uint32_t digitize(float signal) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
-	if (htim->Instance == TIM3) {
-		float tau = 2.0f * M_PI * (float)sample_index / SAMPLING_FREQUENCY;
+    if (htim->Instance == TIM3) {
 
-		noise = NOISE_AMPLITUDE * compute_sine(tau, NOISE_FREQUENCY, 0);
+        // Directly push pre-calculated values to the DAC
+        HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, lut_channel_1[sample_index]);
+        HAL_DAC_SetValue(&hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, lut_channel_2[sample_index]);
 
-		float signal_A = SIGNAL_AMPLITUDE * compute_sine(tau, SIGNAL_FREQUENCY * 2, PHASE_A) + DAC_OFFSET; // + noise;
-		float signal_B = SIGNAL_AMPLITUDE * compute_sine(tau, SIGNAL_FREQUENCY, PHASE_B) + DAC_OFFSET + noise;
-
-		HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, digitize(signal_A));
-		HAL_DAC_SetValue(&hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, digitize(signal_B));
-
-		sample_index++;
-		if (sample_index >= (uint32_t)(SAMPLING_FREQUENCY / SIGNAL_FREQUENCY)) {
-			sample_index = 0;
-		}
-	}
-
-	else if (htim->Instance == TIM7) {
-		HAL_GPIO_TogglePin(LED0_GPIO_Port, LED0_Pin);
-	}
-
+        sample_index++;
+        if (sample_index >= NUM_SAMPLES) {
+            sample_index = 0;
+        }
+    }
+    else if (htim->Instance == TIM7) {
+        HAL_GPIO_TogglePin(LED0_GPIO_Port, LED0_Pin);
+    }
 }
 /* USER CODE END PFP */
 
@@ -147,6 +143,19 @@ int main(void)
   MX_TIM3_Init();
   MX_RNG_Init();
   /* USER CODE BEGIN 2 */
+  // Pre-calculate the entire wave exactly once
+	for (int i = 0; i < NUM_SAMPLES; i++) {
+		float tau = 2.0f * (float)M_PI * (float)i / (float)NUM_SAMPLES;
+
+		float noise_val = NOISE_AMPLITUDE * compute_sine(tau, NOISE_FREQUENCY/SIGNAL_FREQUENCY, 0);
+
+		float signal_A = SIGNAL_AMPLITUDE * compute_sine(tau, 2.0f, PHASE_A) + DAC_OFFSET; // + noise_val;
+		float signal_B = SIGNAL_AMPLITUDE * compute_sine(tau, 1.0f, PHASE_B) + DAC_OFFSET + noise_val;
+
+		lut_channel_1[i] = digitize(signal_A);
+		lut_channel_2[i] = digitize(signal_B);
+	}
+
   HAL_DAC_Start(&hdac, DAC_CHANNEL_1);
   HAL_DAC_Start(&hdac, DAC_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
